@@ -155,7 +155,7 @@ with tab_all:
             "overall_rank": st.column_config.NumberColumn("#", width="small"),
             "pos_rank": st.column_config.NumberColumn("PosRk", width="small"),
         },
-        key="draft_editor",
+        key=f"draft_editor_{len(st.session_state.drafted)}",
     )
 
     # Process checkbox deltas
