@@ -1,0 +1,67 @@
+# League: NFL Blitz 2000 (Yahoo id 964248)
+# Season: 2026
+# Update num_teams once finalized (currently 10-13 TBD)
+
+name: "NFL Blitz 2000"
+season: 2026
+num_teams: 12  # placeholder; adjust to 10 or 13 when confirmed
+
+roster:
+  QB: 1
+  RB: 2
+  WR: 3
+  TE: 1
+  FLEX: 1     # W/R/T
+  K: 1
+  DEF: 1
+  BN: 6
+  IR: 1
+
+scoring:
+  # Passing
+  pass_yd: 0.04           # 25 yds per pt
+  pass_td: 4
+  pass_int: -1
+  pass_2pt: 2
+  # Rushing
+  rush_yd: 0.1            # 10 yds per pt
+  rush_td: 6
+  rush_2pt: 2
+  # Receiving
+  rec: 0.5                # half PPR
+  rec_yd: 0.1             # 10 yds per pt
+  rec_td: 6
+  rec_2pt: 2
+  # Misc offense
+  fumble_lost: -2
+  return_td: 6
+  offensive_fumble_return_td: 6
+  # Kicking
+  fg_0_19: 3
+  fg_20_29: 3
+  fg_30_39: 3
+  fg_40_49: 4
+  fg_50_plus: 5
+  xp_made: 1
+  # DEF/ST
+  def_sack: 1
+  def_int: 2
+  def_fumble_rec: 2
+  def_td: 6
+  def_safety: 2
+  def_block: 2
+  def_return_td: 6
+  def_pa_0: 10
+  def_pa_1_6: 7
+  def_pa_7_13: 4
+  def_pa_14_20: 1
+  def_pa_21_27: 0
+  def_pa_28_34: -1
+  def_pa_35_plus: -4
+  def_xp_returned: 2
+
+# Playoff-schedule weighting: weeks that count for making/winning playoffs
+# 4-team playoff wks 16-17, but reg-season wins qualify you (wks 1-14 + 15?)
+# Verify with Yahoo settings; using weighted ROS for now
+playoff_weeks: [16, 17]
+playoff_weight_multiplier: 2.0   # weight these weeks 2x in ROS projections

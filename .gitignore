@@ -2,8 +2,9 @@
 .venv/
 __pycache__/
 *.pyc
-auth/
-data/
+/auth/
+/data/
+/output/
 *.log
 .DS_Store
 .claude/
