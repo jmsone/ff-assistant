@@ -52,6 +52,7 @@ def get_all_players(refresh: bool = False) -> pd.DataFrame:
             "status": p.get("status"),
             "injury_status": p.get("injury_status"),
             "depth_chart_order": p.get("depth_chart_order"),
+            "college": p.get("college"),
         })
     df = pd.DataFrame(rows)
     df = df[df["position"].isin(["QB", "RB", "WR", "TE", "K", "DEF"])]

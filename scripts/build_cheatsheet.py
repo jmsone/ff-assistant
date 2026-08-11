@@ -53,7 +53,7 @@ def main() -> None:
     scored["adp_value"] = scored["adp"] - scored["overall_rank"]
 
     cols = ["overall_rank", "name", "position", "team", "tier", "pos_rank",
-            "fp", "vbd", "adp", "adp_value", "age", "years_exp",
+            "fp", "vbd", "adp", "adp_value", "age", "years_exp", "college",
             "injury_status", "depth_chart_order", "gp"]
     cols = [c for c in cols if c in scored.columns]
     scored = scored[cols].sort_values("overall_rank")
