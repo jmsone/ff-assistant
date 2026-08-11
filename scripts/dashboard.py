@@ -125,36 +125,49 @@ if show_bias_only:
 tab_all, tab_picks = st.tabs(["Best Available", "My Picks"])
 
 with tab_all:
-    st.subheader(f"Best available — {len(view)} players")
+    st.subheader(f"Best available — {len(view)} players (top 60 shown)")
+    st.caption("Check **Me** or **Other** on any row to mark drafted. Table refreshes automatically.")
 
-    # Pick + track UI: give user quick "mark drafted" and "add to my picks"
-    top = view.head(50).copy()
-    top_disp = top[["overall_rank", "name", "position", "team", "tier", "pos_rank",
-                    "fp", "vbd", "adp", "adp_value", "bias", "injury_status", "college"]]
-    st.dataframe(
-        top_disp.style.apply(style_biases, axis=1).format({
-            "fp": "{:.1f}", "vbd": "{:.1f}", "adp": "{:.1f}", "adp_value": "{:+.1f}",
-        }),
+    top = view.head(60).copy().reset_index(drop=True)
+
+    # Editable table with two checkbox cols
+    edit_df = top[["overall_rank", "name", "position", "team", "tier", "pos_rank",
+                   "fp", "vbd", "adp", "adp_value", "bias", "injury_status", "college"]].copy()
+    edit_df.insert(0, "Me", False)
+    edit_df.insert(1, "Other", False)
+
+    edited = st.data_editor(
+        edit_df,
         use_container_width=True,
         hide_index=True,
-        height=600,
+        height=650,
+        disabled=[c for c in edit_df.columns if c not in ("Me", "Other")],
+        column_config={
+            "Me": st.column_config.CheckboxColumn("Me", width="small",
+                                                   help="Check when YOU draft this player"),
+            "Other": st.column_config.CheckboxColumn("Other", width="small",
+                                                     help="Check when someone else drafts"),
+            "fp": st.column_config.NumberColumn("FP", format="%.1f"),
+            "vbd": st.column_config.NumberColumn("VBD", format="%.1f"),
+            "adp": st.column_config.NumberColumn("ADP", format="%.1f"),
+            "adp_value": st.column_config.NumberColumn("+/-", format="%+.1f",
+                                                       help="ADP minus overall rank; + = value"),
+            "overall_rank": st.column_config.NumberColumn("#", width="small"),
+            "pos_rank": st.column_config.NumberColumn("PosRk", width="small"),
+        },
+        key="draft_editor",
     )
 
-    st.divider()
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        pick_name = st.selectbox(
-            "Mark player as drafted",
-            options=[""] + view["name"].tolist(),
-            key="pick_select",
-        )
-    with col2:
-        pick_who = st.radio("Who drafted?", ["Someone else", "ME"], horizontal=True)
-
-    if st.button("Confirm pick", type="primary", disabled=not pick_name):
-        st.session_state.drafted.add(pick_name)
-        if pick_who == "ME":
-            st.session_state.my_picks.append(pick_name)
+    # Process checkbox deltas
+    newly_drafted = edited[edited["Me"] | edited["Other"]]
+    if len(newly_drafted) > 0:
+        for _, row in newly_drafted.iterrows():
+            name = row["name"]
+            if name in st.session_state.drafted:
+                continue
+            st.session_state.drafted.add(name)
+            if row["Me"]:
+                st.session_state.my_picks.append(name)
         st.rerun()
 
 with tab_picks:
