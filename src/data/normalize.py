@@ -48,6 +48,16 @@ def _clean_col(c: str) -> str:
     return c
 
 
+def canonical_name(name: str) -> str:
+    """Lowercase, strip punctuation + jr/sr/roman suffix. Merge-friendly key."""
+    if not isinstance(name, str):
+        return ""
+    s = name.lower()
+    s = re.sub(r"[^a-z0-9\s]", "", s)
+    s = re.sub(r"\s+(jr|sr|ii|iii|iv|v)$", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
 def _clean_name(name: str) -> str:
     """Strip trailing team abbr from FantasyPros player names, e.g.
     'Ja'Marr Chase CIN' -> 'Ja'Marr Chase'

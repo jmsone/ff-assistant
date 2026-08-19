@@ -12,8 +12,36 @@ import streamlit as st
 
 from src.cheatsheet import assign_tiers, compute_vbd
 from src.config import load_config
+from src.data.espn import get_projections as get_espn_projections
+from src.data.schedule import get_bye_weeks
 from src.data.sleeper import build_projections
+from src.data.sos import playoff_sos_grades
 from src.scoring import score_dataframe
+
+import re
+
+
+def _norm_name(s: str) -> str:
+    if not isinstance(s, str):
+        return ""
+    s = s.lower()
+    s = re.sub(r"[^a-z0-9\s]", "", s)
+    s = re.sub(r"\s+(jr|sr|ii|iii|iv|v)$", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _blend_ensemble(base: pd.DataFrame, espn_df: pd.DataFrame, sleeper_weight: float = 0.5) -> pd.DataFrame:
+    base = base.copy()
+    base["_key"] = base["name"].apply(_norm_name) + "|" + base["position"]
+    espn = espn_df.copy()
+    espn["_key"] = espn["name"].apply(_norm_name) + "|" + espn["position"]
+    espn_slim = espn[["_key", "fp_espn"]].drop_duplicates(subset="_key")
+    merged = base.merge(espn_slim, on="_key", how="left").rename(columns={"fp": "fp_sleeper"})
+    espn_wt = 1.0 - sleeper_weight
+    ensemble = merged["fp_sleeper"] * sleeper_weight + merged["fp_espn"] * espn_wt
+    merged["fp"] = ensemble.where(merged["fp_espn"].notna(), merged["fp_sleeper"])
+    merged["fp_delta"] = merged["fp_espn"] - merged["fp_sleeper"]
+    return merged.drop(columns=["_key"])
 
 ROOT = Path(__file__).resolve().parent.parent
 CSV_PATH = ROOT / "output" / "cheatsheet.csv"
@@ -40,10 +68,17 @@ def rebuild() -> pd.DataFrame:
     kdef["fp"] = kdef.get("pts_half_ppr", 0)
 
     all_players = pd.concat([offense, kdef], ignore_index=True)
+    espn = get_espn_projections(cfg.season)
+    all_players = _blend_ensemble(all_players, espn, sleeper_weight=0.5)
     scored = compute_vbd(all_players, cfg)
     scored = assign_tiers(scored)
     scored["overall_rank"] = scored["vbd"].rank(ascending=False, method="min").astype(int)
     scored["adp_value"] = scored["adp"] - scored["overall_rank"]
+    byes = get_bye_weeks(cfg.season)
+    scored["bye"] = scored["team"].map(byes).astype("Int64")
+    sos = playoff_sos_grades(target_season=cfg.season, prior_season=cfg.season - 1)
+    scored = scored.merge(sos[["team", "position", "sos_ratio", "sos_grade", "sos_opps"]],
+                          on=["team", "position"], how="left")
     return scored.sort_values("overall_rank").reset_index(drop=True)
 
 
@@ -131,8 +166,9 @@ with tab_all:
     top = view.head(60).copy().reset_index(drop=True)
 
     # Editable table with two checkbox cols
-    edit_df = top[["overall_rank", "name", "position", "team", "tier", "pos_rank",
-                   "fp", "vbd", "adp", "adp_value", "bias", "injury_status", "college"]].copy()
+    edit_df = top[["overall_rank", "name", "position", "team", "bye", "tier", "pos_rank",
+                   "fp", "fp_delta", "vbd", "adp", "adp_value", "sos_grade", "sos_opps",
+                   "bias", "injury_status", "college"]].copy()
     edit_df.insert(0, "Me", False)
     edit_df.insert(1, "Other", False)
 
@@ -147,13 +183,22 @@ with tab_all:
                                                    help="Check when YOU draft this player"),
             "Other": st.column_config.CheckboxColumn("Other", width="small",
                                                      help="Check when someone else drafts"),
-            "fp": st.column_config.NumberColumn("FP", format="%.1f"),
+            "fp": st.column_config.NumberColumn("FP", format="%.1f",
+                                                 help="Ensemble = 0.5 * Sleeper + 0.5 * ESPN"),
+            "fp_delta": st.column_config.NumberColumn("Δ", format="%+.0f", width="small",
+                                                       help="ESPN minus Sleeper. + = ESPN higher (Sleeper may under-project)."),
             "vbd": st.column_config.NumberColumn("VBD", format="%.1f"),
             "adp": st.column_config.NumberColumn("ADP", format="%.1f"),
             "adp_value": st.column_config.NumberColumn("+/-", format="%+.1f",
                                                        help="ADP minus overall rank; + = value"),
             "overall_rank": st.column_config.NumberColumn("#", width="small"),
             "pos_rank": st.column_config.NumberColumn("PosRk", width="small"),
+            "bye": st.column_config.NumberColumn("Bye", width="small",
+                                                  help="Bye week. Tiebreaker only — never override VBD."),
+            "sos_grade": st.column_config.TextColumn("SoS", width="small",
+                                                     help="Playoff wk16-17 matchup grade based on 2025 DvP. A=softest, F=toughest. Tiebreaker only."),
+            "sos_opps": st.column_config.TextColumn("Playoff opps", width="medium",
+                                                    help="Wk16 > Wk17 opponents"),
         },
         key=f"draft_editor_{len(st.session_state.drafted)}",
     )
@@ -184,7 +229,8 @@ with tab_picks:
             cols[i].metric(pos, counts.get(pos, 0))
 
         st.dataframe(
-            my[["draft_order", "name", "position", "team", "tier", "fp", "vbd", "bias", "college"]],
+            my[["draft_order", "name", "position", "team", "bye", "sos_grade",
+                "tier", "fp", "vbd", "bias", "college"]],
             hide_index=True,
             use_container_width=True,
         )
@@ -198,5 +244,33 @@ with tab_picks:
                 st.warning(f"{pos}: {have}/{needed} starters filled")
             else:
                 st.success(f"{pos}: {have}/{needed} OK")
+
+        # Bye-week conflicts (low-pressure hint only — never override VBD)
+        st.divider()
+        st.subheader("Bye-week overlap")
+        bye_view = my[my["bye"].notna()].copy()
+        if bye_view.empty:
+            st.caption("No bye data yet.")
+        else:
+            grouped = bye_view.groupby(["bye", "position"]).size().unstack(fill_value=0)
+            # Thresholds: single-slot positions warn at 2+, flex-heavy warn at 3+
+            single_slot = {"QB", "TE", "K", "DEF"}
+            flags = []
+            for wk, row in grouped.iterrows():
+                for pos, n in row.items():
+                    if n == 0:
+                        continue
+                    threshold = 2 if pos in single_slot else 3
+                    if n >= threshold:
+                        names = ", ".join(bye_view[(bye_view["bye"] == wk) & (bye_view["position"] == pos)]["name"])
+                        flags.append(f"Wk {wk} · {pos} ×{n}: {names}")
+            if flags:
+                for f in flags:
+                    st.warning(f)
+                st.caption("Hint: fixable via waivers week-of. Do not reach at draft to avoid.")
+            else:
+                st.success("No painful bye overlaps.")
+            with st.expander("Full bye-by-position table"):
+                st.dataframe(grouped, use_container_width=True)
     else:
         st.info("No picks yet. Mark players as drafted in 'Best Available' with 'Who drafted? = ME'.")

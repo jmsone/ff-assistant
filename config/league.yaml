@@ -1,10 +1,9 @@
-# League: NFL Blitz 2000 (Yahoo id 964248)
-# Season: 2026
-# Update num_teams once finalized (currently 10-13 TBD)
+# Example league config. Copy and adjust to match your Yahoo league's scoring + roster.
+# Season and num_teams should match your league settings.
 
-name: "NFL Blitz 2000"
+name: "My Fantasy League"
 season: 2026
-num_teams: 12  # placeholder; adjust to 10 or 13 when confirmed
+num_teams: 12
 
 roster:
   QB: 1

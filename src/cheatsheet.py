@@ -39,27 +39,49 @@ def compute_vbd(df: pd.DataFrame, cfg: LeagueConfig, fp_col: str = "fp") -> pd.D
     return out.sort_values("vbd", ascending=False).reset_index(drop=True)
 
 
-def assign_tiers(df: pd.DataFrame, gap_thresholds: dict[str, float] | None = None) -> pd.DataFrame:
-    """Assign tier number per position based on VBD gaps.
-    Default gap thresholds (points of drop) chosen for half-PPR feel:
-      QB: 15, RB: 20, WR: 18, TE: 15, K: 5, DEF: 8
+def assign_tiers(df: pd.DataFrame, gap_thresholds: dict[str, float] | None = None,
+                 gap_mult: float = 3.5, max_tier_size: int = 8,
+                 tier_window: int = 30) -> pd.DataFrame:
+    """Assign tier number per position based on adaptive VBD gaps.
+
+    A tier break fires when a gap exceeds max(floor, gap_mult * median_gap),
+    computed over the top `tier_window` players at that position (positions
+    beyond the window rarely get drafted so their gaps shouldn't dilute).
+
+    Also caps tier size — forces a break after `max_tier_size` consecutive players
+    to prevent runaway single-tier situations when the VBD curve is smooth.
+
+    gap_thresholds: per-position hard floor. Defaults tuned for half-PPR VBD scale.
     """
-    thresholds = gap_thresholds or {
-        "QB": 15, "RB": 20, "WR": 18, "TE": 15, "K": 5, "DEF": 8,
+    floors = gap_thresholds or {
+        "QB": 12, "RB": 10, "WR": 8, "TE": 8, "K": 3, "DEF": 3,
     }
     out = df.copy()
     out["tier"] = 0
 
-    for pos, thresh in thresholds.items():
+    for pos in out["position"].dropna().unique():
+        floor = floors.get(pos, 5)
         mask = out["position"] == pos
         pos_df = out[mask].sort_values("vbd", ascending=False).copy()
+        if pos_df.empty:
+            continue
+        # Adaptive threshold from top-N gaps
+        window_vbd = pos_df["vbd"].head(tier_window)
+        gaps = (-window_vbd.diff().dropna())
+        median_gap = gaps.median() if len(gaps) else 0.0
+        thresh = max(floor, gap_mult * (median_gap or 0.0))
+
         tiers = []
         current_tier = 1
+        tier_count = 0
         prev_vbd: float | None = None
         for _, row in pos_df.iterrows():
-            if prev_vbd is not None and (prev_vbd - row["vbd"]) > thresh:
+            gap = (prev_vbd - row["vbd"]) if prev_vbd is not None else 0.0
+            if prev_vbd is not None and (gap > thresh or tier_count >= max_tier_size):
                 current_tier += 1
+                tier_count = 0
             tiers.append(current_tier)
+            tier_count += 1
             prev_vbd = row["vbd"]
         out.loc[pos_df.index, "tier"] = tiers
     return out

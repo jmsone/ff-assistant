@@ -1,10 +1,30 @@
+# Secrets
 .env
-.venv/
-__pycache__/
-*.pyc
+.env.local
 /auth/
+
+# Data / outputs (not checked in — regenerate via scripts)
 /data/
 /output/
-*.log
-.DS_Store
+src/outputs/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# IDE / OS
 .claude/
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
